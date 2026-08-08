@@ -82,7 +82,7 @@
   .linkline{font-size:13px;color:var(--muted);margin:10px 2px 0}
   .linkbtn{background:none;border:none;color:var(--accent);font-weight:700;cursor:pointer;font-size:inherit;padding:0}
 
-  input[type=text],input[type=number],select,textarea{
+  input[type=text],input[type=number],input[type=date],select,textarea{
     background:var(--surface);border:1px solid var(--line2);color:var(--text);
     border-radius:10px;padding:10px 10px;font-size:16px;width:100%;font-family:inherit
   }
@@ -424,7 +424,9 @@ function renderToday(){
     });
     h+="</div>";
     h+='<div style="margin-bottom:10px"><button class="btn sm" id="addset">+ подход</button></div>';
-    h+='<input type="text" id="entrynote" placeholder="Заметка (не обязательно)" style="margin-bottom:10px">';
+    h+='<div style="display:grid;grid-template-columns:130px 1fr;gap:8px;margin-bottom:10px">'+
+       '<div><label class="f">Дата</label><input type="date" id="entrydate" value="'+t+'" max="'+t+'"></div>'+
+       '<div><label class="f">Заметка</label><input type="text" id="entrynote" placeholder="Не обязательно"></div></div>';
     h+='<div style="display:flex;gap:8px"><button class="btn primary wide" id="saveentry">Сохранить</button><button class="btn" id="cancelentry">Отмена</button></div>';
     h+="</div>";
   }
@@ -507,8 +509,10 @@ function renderToday(){
         .filter(s=>s.r>0);
       if(!sets.length){ toast("Введи хотя бы один подход"); return; }
       const note=document.getElementById("entrynote").value.trim();
-      S.log.push({id:uid(), d:today(), ex:openEx, sets, note:note||undefined});
-      save(); openEx=null; pendingSets=[]; render(); toast("Записано");
+      let d=document.getElementById("entrydate").value;
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(d) || d>today()) d=today();
+      S.log.push({id:uid(), d, ex:openEx, sets, note:note||undefined});
+      save(); openEx=null; pendingSets=[]; render(); toast(d===today()?"Записано":"Записано за "+fmtDay(d));
     });
   }
   wireEntryDeletes();
