@@ -16,14 +16,14 @@
     --bg:#F2F3F2; --surface:#FFFFFF; --surface2:#E9EDEF; --line:#D6DBDF; --line2:#C4CBD1;
     --text:#171B1F; --muted:#5C666E; --accent:#2F6395; --accent-c:#FFFFFF; --accent-soft:#2F639518;
     --ok:#24784C; --ok-soft:#24784C1A; --warn:#A87716; --warn-soft:#A8771620; --danger:#B04A3C;
-    --chip:#EDF0F2;
+    --chip:#EDF0F2; --part:#A6BACB;
   }
   @media (prefers-color-scheme: dark){
     :root{
       --bg:#0F1317; --surface:#171C21; --surface2:#1F262C; --line:#2A333B; --line2:#38434D;
       --text:#E8EAEC; --muted:#97A1A9; --accent:#7FB0DC; --accent-c:#0E1418; --accent-soft:#7FB0DC22;
       --ok:#5CBE8A; --ok-soft:#5CBE8A22; --warn:#D9A441; --warn-soft:#D9A44126; --danger:#D07A6B;
-      --chip:#212930;
+      --chip:#212930; --part:#4E6A85;
     }
   }
   *{box-sizing:border-box}
@@ -46,6 +46,7 @@
   .iconbtn.sm{min-width:34px;height:34px;font-size:16px}
 
   h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin:22px 0 8px}
+  .eyebrow{display:block;font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
   .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:10px}
   .card.tight{padding:10px 12px}
   .muted{color:var(--muted)}
@@ -101,9 +102,11 @@
   .blk{width:16px;height:16px;border-radius:4px;background:var(--ok)}
   .blk.hollow{background:transparent;border:1.5px dashed var(--line2)}
   .blk.over{background:var(--warn)}
+  .blk.part{background:var(--part)}
   .bar{position:relative;height:14px;border-radius:7px;background:var(--surface2);border:1px solid var(--line);overflow:hidden}
   .bar .fill{position:absolute;left:0;top:0;bottom:0;background:var(--ok);border-radius:7px}
   .bar .fill.warn{background:var(--warn)}
+  .bar .fill.part{background:var(--part)}
   .bar .tick{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--line2)}
   .pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:700}
   .pill.under{background:var(--surface2);color:var(--muted);border:1px solid var(--line)}
@@ -412,18 +415,19 @@ function renderToday(){
   else hint="<b>Все группы в зоне.</b> Держи уровень, рекорды не обязательны.";
 
   h+='<div class="card">';
+  h+='<span class="eyebrow" style="margin-bottom:8px">Как ты сегодня?</span>';
   h+='<div class="seg" id="ready">';
   [["fresh","Свежий"],["ok","Норм"],["low","Подбитый"]].forEach(([k,l])=>{
     h+='<button data-r="'+k+'" aria-pressed="'+(ready===k)+'" class="'+(ready===k?"on":"")+'">'+l+"</button>";
   });
   h+="</div>";
-  h+='<p style="margin:12px 0 0;font-size:15px">'+hint+"</p>";
+  h+='<div style="margin-top:14px"><span class="eyebrow">Совет на сегодня</span><p style="margin:2px 0 0;font-size:15px">'+hint+"</p></div>";
   if(under.length){
-    h+='<div class="chips" style="margin-top:10px">';
+    h+='<div style="margin-top:14px"><span class="eyebrow">Недобор объёма за 7 дней</span><div class="chips" style="margin-top:6px">';
     under.slice(0,3).forEach(x=>{
-      h+='<button class="chip mini" data-goweek="1">'+esc(GROUPS[x.g].name)+' <span class="num muted">'+x.c+"/"+x.t.min+"–"+x.t.max+"</span></button>";
+      h+='<button class="chip mini" data-goweek="1">'+esc(GROUPS[x.g].name)+' <span class="num muted">'+x.c+" из "+x.t.min+"–"+x.t.max+"</span></button>";
     });
-    h+="</div>";
+    h+='</div><div class="xs muted" style="margin-top:6px">Это сумма твоих записей за неделю, не сегодняшний план. Тап — детали в «Неделе».</div></div>';
   }
   h+="</div>";
 
@@ -463,16 +467,19 @@ function renderToday(){
     h+="</div>";
   }
 
-  // today's entries
+  // today's entries — секция видна всегда, чтобы было ясно, куда падают записи
   const todays=S.log.filter(e=>e.d===t);
+  h+="<h2>Записано сегодня</h2>";
   if(todays.length){
-    h+="<h2>Сегодня записано</h2><div class='card tight'>";
+    h+="<div class='card tight'>";
     todays.forEach(en=>{
       const ex=exById(en.ex);
       h+='<div class="entry"><div><div class="ex">'+esc(ex?ex.name:"?")+'</div><div class="sets num">'+fmtSets(en)+"</div>"+(en.note?'<div class="note">'+esc(en.note)+"</div>":"")+"</div>"+
          '<button data-del="'+en.id+'" aria-label="Удалить">✕</button></div>';
     });
     h+="</div>";
+  } else {
+    h+='<div class="card tight"><div class="empty" style="padding:10px 4px">Пока пусто. Тапни упражнение выше — запись появится здесь, в «Неделе» и в журнале.</div></div>';
   }
 
   // reference material — out of the action path
@@ -578,20 +585,23 @@ function renderWeek(){
       h+='<div class="blocks">';
       const show=Math.max(st.c,t.min);
       for(let i=0;i<show;i++){
-        if(i<st.c) h+='<div class="blk'+(i>=t.max?" over":"")+'"></div>';
+        if(i<st.c){
+          let bc="blk"; if(st.s==="under") bc+=" part"; else if(i>=t.max) bc+=" over";
+          h+='<div class="'+bc+'"></div>';
+        }
         else h+='<div class="blk hollow"></div>';
       }
       h+='<span class="xs muted num" style="margin-left:6px">'+st.c+" / "+t.min+"–"+t.max+" подходов</span></div>";
     } else {
       const pct=Math.min(100, st.c/t.max*100);
       const minPct=t.min/t.max*100;
-      h+='<div class="bar"><div class="fill'+(st.s==="over"?" warn":"")+'" style="width:'+pct+'%"></div><div class="tick" style="left:'+minPct+'%"></div></div>'+
+      h+='<div class="bar"><div class="fill'+(st.s==="over"?" warn":st.s==="under"?" part":"")+'" style="width:'+pct+'%"></div><div class="tick" style="left:'+minPct+'%"></div></div>'+
          '<div class="xs muted num">'+st.c+" / "+t.min+"–"+t.max+" повторений</div>";
     }
     h+='<div class="xs muted">'+(last?(ago===0?"сегодня":ago+" дн. назад"):"нет записей")+"</div></div>";
   });
   h+="</div>";
-  h+='<div class="xs muted" style="margin:8px 2px">Окно скользящее: сегодня и 6 дней до. Диапазоны правятся в настройках ⚙.</div>';
+  h+='<div class="xs muted" style="margin:8px 2px">Стальные квадраты — объём копится, зелёные — группа в зоне, янтарные — перебор. Окно скользящее: сегодня и 6 дней до. Диапазоны правятся в настройках ⚙.</div>';
   view.innerHTML=h;
 }
 
@@ -611,6 +621,22 @@ function spark(series){
     '<path d="'+d+'"/><circle cx="'+x(series.length-1)+'" cy="'+y(last.v)+'" r="3"/>'+
     '<text x="'+p+'" y="10">'+mx.toFixed(1)+'</text><text x="'+p+'" y="'+(hh-2)+'">'+mn.toFixed(1)+"</text></svg>";
 }
+function weightTrend(){
+  // линейная регрессия по взвешиваниям за последние 28 дней → кг/нед
+  const pts=Object.entries(S.body).filter(([,v])=>v.w!=null)
+    .map(([d,v])=>({x:daysBetween("2026-01-01",d), y:+v.w}))
+    .sort((a,b)=>a.x-b.x);
+  if(pts.length<4) return null;
+  const lastX=pts[pts.length-1].x;
+  const win=pts.filter(p=>p.x>=lastX-27);
+  const span=win.length? win[win.length-1].x-win[0].x : 0;
+  if(win.length<4||span<7) return null;
+  const n=win.length;
+  let sx=0,sy=0,sxx=0,sxy=0;
+  win.forEach(p=>{ sx+=p.x; sy+=p.y; sxx+=p.x*p.x; sxy+=p.x*p.y; });
+  const den=n*sxx-sx*sx; if(!den) return null;
+  return {wk:(n*sxy-sx*sy)/den*7, n, days:span};
+}
 function renderBody(){
   const t=today(); const b=S.body[t]||{};
   let h='<h2 style="margin-top:16px">Сегодня</h2><div class="card">';
@@ -623,15 +649,26 @@ function renderBody(){
   // stats
   const entries=Object.entries(S.body).filter(([d,v])=>v.w!=null).sort((a,b)=>a[0]<b[0]?-1:1);
   const win=new Set(weekDates());
-  const prevWin=new Set(weekDates().map(d=>addDays(d,-7)));
   const cur=entries.filter(([d])=>win.has(d)).map(([,v])=>+v.w);
-  const prev=entries.filter(([d])=>prevWin.has(d)).map(([,v])=>+v.w);
   const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
-  const ca=avg(cur), pa=avg(prev);
+  const ca=avg(cur);
   h+="<h2>Вес</h2><div class='card'>";
   if(ca!=null){
-    h+='<div class="bignum num">'+ca.toFixed(1)+' <span class="small muted" style="font-weight:600">кг · среднее за 7 дн</span></div>';
-    if(pa!=null){ const d=ca-pa; h+='<div class="small'+(Math.abs(d)>0.05?"":" muted")+'">'+(d>=0?"+":"")+d.toFixed(2)+" кг к прошлой неделе <span class='muted'>(цель набора: +0,15…+0,35)</span></div>"; }
+    h+='<div class="bignum num">'+ca.toFixed(1)+' <span class="small muted" style="font-weight:600">кг сейчас · среднее за 7 дней</span></div>';
+    const tr=weightTrend();
+    if(tr){
+      const wk=tr.wk;
+      let st2;
+      if(wk<-0.05) st2="вес падает — это не набор";
+      else if(wk<0.05) st2="стоишь на месте";
+      else if(wk<0.15) st2="медленнее коридора набора — ешь смелее";
+      else if(wk<=0.35) st2="в коридоре набора, так держать";
+      else st2="быстрее коридора — притормози жирные вылазки";
+      h+='<div class="small" style="margin-top:6px">Тренд: <b class="num">'+(wk>=0?"+":"")+wk.toFixed(2)+' кг/нед</b> <span class="muted num">≈ '+(wk>=0?"+":"")+(wk*4.35).toFixed(1)+" кг/мес</span></div>";
+      h+='<div class="small muted">'+st2+" · коридор +0,15…+0,35 кг/нед · по "+tr.n+" взвешиваниям за "+plural(tr.days,["день","дня","дней"])+"</div>";
+    } else {
+      h+='<div class="small muted" style="margin-top:6px">Тренд (кг/нед) появится после 4+ взвешиваний с разбегом от недели. Взвешивайся каждое утро — «нечестные» дни тоже, среднее их сгладит.</div>';
+    }
   } else h+='<div class="empty">Взвешивайся каждое утро: после туалета, до еды. Считается только среднее за 7 дней — дневные скачки шум.</div>';
   h+=spark(entries.slice(-60).map(([d,v])=>({d,v:+v.w})));
   h+="</div>";

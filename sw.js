@@ -1,5 +1,5 @@
 // сеть в приоритете, кэш — запасной вариант для офлайна в зале
-const V = "gym-v3";
+const V = "gym-v4";
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(["./", "./index.html", "./manifest.json", "./icon-180.png"])));
   self.skipWaiting();
