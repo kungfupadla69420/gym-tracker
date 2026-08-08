@@ -201,8 +201,8 @@ const GROUPS = {
   backrow: {name:"Спина (тяги)",    unit:"sets", min:6,  max:10, ord:4},
   delts:   {name:"Средняя дельта",  unit:"sets", min:6,  max:12, ord:5},
   calves:  {name:"Икры",            unit:"sets", min:6,  max:12, ord:6},
-  glutes:  {name:"Ягодицы",         unit:"sets", min:4,  max:8,  ord:7},
-  quads:   {name:"Квадрицепс",      unit:"sets", min:4,  max:8,  ord:8},
+  glutes:  {name:"Ягодицы",         unit:"sets", min:0,  max:8,  ord:7},
+  quads:   {name:"Ноги (жим)",      unit:"sets", min:4,  max:8,  ord:8},
   lowback: {name:"Низ спины",       unit:"sets", min:2,  max:4,  ord:9},
   abs:     {name:"Пресс",           unit:"sets", min:4,  max:8,  ord:10},
   triceps: {name:"Трицепс",         unit:"sets", min:3,  max:6,  ord:11},
@@ -244,6 +244,35 @@ let S;
 try { S = JSON.parse(localStorage.getItem(LS_KEY)) || freshState(); }
 catch(e){ S = freshState(); }
 if(!S.ex || !S.log) S = freshState();
+
+/* миграция v2: пятница 07.08 из разговора, веса тела, ревизия упражнений */
+if(S.v===1){
+  S.v=2;
+  if(S.tg.glutes) S.tg.glutes.min=0;
+  const p=S.ex.find(e=>e.id==="press1"); if(p) p.name="Жим одноногий (ноги + ягодицы)";
+  const g=S.ex.find(e=>e.id==="glute"); if(g) g.arch=true;
+  const x=S.ex.find(e=>e.id==="ext"); if(x) x.arch=true;
+  if(!S.ex.some(e=>e.id==="ohp")) S.ex.push({id:"ohp", name:"Жим гантелей вверх", g:"delts", reps:false, prio:0});
+  if(!S.log.some(e=>e.id==="seed3")){
+    S.log.push(
+      {id:"seed3",  d:"2026-08-07", ex:"lat",    sets:[{w:36,r:20},{w:43,r:7},{w:36,r:15}]},
+      {id:"seed4",  d:"2026-08-07", ex:"delts",  sets:[{w:5,r:18},{w:5,r:18},{w:5,r:18}]},
+      {id:"seed5",  d:"2026-08-07", ex:"ohp",    sets:[{w:17.5,r:7},{w:15,r:8},{w:15,r:9}]},
+      {id:"seed6",  d:"2026-08-07", ex:"wrist",  sets:[{w:20,r:7},{w:20,r:7},{w:20,r:7},{w:20,r:10}]},
+      {id:"seed7",  d:"2026-08-07", ex:"french", sets:[{w:0,r:0},{w:0,r:0},{w:0,r:0}], note:"цифры не записаны"},
+      {id:"seed8",  d:"2026-08-07", ex:"kelso",  sets:[{w:0,r:0},{w:0,r:0}], note:"цифры не записаны"},
+      {id:"seed9",  d:"2026-08-07", ex:"abs",    sets:[{w:0,r:0},{w:0,r:0}]},
+      {id:"seed10", d:"2026-08-07", ex:"hyper",  sets:[{w:0,r:0}], note:"с дропсетом"},
+      {id:"seed11", d:"2026-08-07", ex:"press1", sets:[{w:0,r:0},{w:0,r:0},{w:0,r:0}]},
+      {id:"seed12", d:"2026-08-07", ex:"calf",   sets:[{w:0,r:0},{w:0,r:0},{w:0,r:0}]}
+    );
+  }
+  S.body["2026-08-06"]=Object.assign({}, S.body["2026-08-06"], {alco:true});
+  if(S.body["2026-08-06"].w==null) S.body["2026-08-06"].w=81.55;
+  S.body["2026-08-08"]=S.body["2026-08-08"]||{};
+  if(S.body["2026-08-08"].w==null) S.body["2026-08-08"].w=82.6;
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){}
+}
 
 function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){ toast("Не удалось сохранить (память браузера)"); } }
 
@@ -290,6 +319,7 @@ function bestOf(exId){
   }
   return b;
 }
+function plural(n,f){ const a=Math.abs(n)%100, b=a%10; return n+" "+(a>10&&a<20?f[2]:b>1&&b<5?f[1]:b===1?f[0]:f[2]); }
 function fmtSets(en){
   const ex=exById(en.ex);
   if(ex && ex.reps){
@@ -297,11 +327,13 @@ function fmtSets(en){
     const parts=en.sets.map(s=> (+s.w>0? "+"+s.w+"кг×":"")+s.r );
     return parts.join("·")+" (всего "+tot+" повт)";
   }
+  if(en.sets.every(s=>!(+s.w)&&!(+s.r))) return plural(en.sets.length,["подход","подхода","подходов"])+" без цифр";
   const out=[]; let i=0;
   while(i<en.sets.length){
     let j=i; while(j+1<en.sets.length && en.sets[j+1].w===en.sets[i].w && en.sets[j+1].r===en.sets[i].r) j++;
     const cnt=j-i+1; const s=en.sets[i];
-    out.push(s.w+"×"+s.r+(cnt>1?" ×"+cnt:"")); i=j+1;
+    const lbl=(+s.w||+s.r)? s.w+"×"+s.r : "—";
+    out.push(lbl+(cnt>1?" ×"+cnt:"")); i=j+1;
   }
   return out.join(" · ");
 }
@@ -504,10 +536,22 @@ function renderToday(){
     });
     document.getElementById("cancelentry").addEventListener("click",()=>{ openEx=null; render(); });
     document.getElementById("saveentry").addEventListener("click",()=>{
-      const sets=pendingSets
+      const bt=document.getElementById("saveentry");
+      let sets=pendingSets
         .map(s=>({w:num(s.w)||0, r:parseInt(String(s.r).trim(),10)||0}))
-        .filter(s=>s.r>0);
-      if(!sets.length){ toast("Введи хотя бы один подход"); return; }
+        .filter(s=>s.r>0||s.w>0);
+      if(!sets.length){
+        // цифры не введены — можно записать просто количество подходов, вторым тапом
+        const ex=exById(openEx);
+        if(ex.reps){ toast("Для подтягиваний нужны повторения"); return; }
+        if(!bt.dataset.armed){
+          bt.dataset.armed="1";
+          bt.textContent="Записать "+plural(pendingSets.length,["подход","подхода","подходов"])+" без цифр?";
+          setTimeout(()=>{ if(document.body.contains(bt)){ delete bt.dataset.armed; bt.textContent="Сохранить"; } },4000);
+          return;
+        }
+        sets=pendingSets.map(()=>({w:0,r:0}));
+      }
       const note=document.getElementById("entrynote").value.trim();
       let d=document.getElementById("entrydate").value;
       if(!/^\d{4}-\d{2}-\d{2}$/.test(d) || d>today()) d=today();
@@ -527,8 +571,9 @@ function renderWeek(){
   keys.forEach(g=>{
     const st=statusOf(g); const t=st.t; const unit=GROUPS[g].unit;
     const last=groupLastDate(g); const ago=last?daysBetween(last,today()):null;
-    h+='<div class="grouprow"><div class="top"><span class="name">'+esc(GROUPS[g].name)+'</span>'+
-       '<span class="pill '+st.s+'">'+(st.s==="under"?"недобор":st.s==="ok"?"в зоне":"перебор")+"</span></div>";
+    const pill=(t.min===0&&st.c===0)? '<span class="pill under">опционально</span>'
+      : '<span class="pill '+st.s+'">'+(st.s==="under"?"недобор":st.s==="ok"?"в зоне":"перебор")+"</span>";
+    h+='<div class="grouprow"><div class="top"><span class="name">'+esc(GROUPS[g].name)+'</span>'+pill+"</div>";
     if(unit==="sets"){
       h+='<div class="blocks">';
       const show=Math.max(st.c,t.min);
