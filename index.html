@@ -276,6 +276,12 @@ if(S.v===1){
   if(S.body["2026-08-08"].w==null) S.body["2026-08-08"].w=82.6;
   try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){}
 }
+/* миграция v3: счётчик-памп для предплечий */
+if(S.v===2){
+  S.v=3;
+  if(!S.ex.some(e=>e.id==="fapump")) S.ex.push({id:"fapump", name:"Предплечья: памп (прочее)", g:"forearms", reps:false, quick:true, prio:0});
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){}
+}
 
 function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){ toast("Не удалось сохранить (память браузера)"); } }
 
@@ -311,6 +317,7 @@ function lastEntry(exId){
   for(const en of S.log){ if(en.ex===exId){ if(!best||en.d>best.d||(en.d===best.d&&en.id>best.id)) best=en; } }
   return best;
 }
+function entryFor(exId,d){ let f=null; for(const en of S.log){ if(en.ex===exId&&en.d===d) f=en; } return f; }
 function est1(w,r){ return Math.round(w*(1+r/30)); }
 function bestOf(exId){
   const ex=exById(exId); let b=null;
@@ -351,7 +358,9 @@ function statusOf(gid){
 const view=document.getElementById("view");
 let TAB="today";
 let openEx=null;          // exercise id whose log form is open
-let pendingSets=[];       // sets in the open form
+let curW="", curR="";     // поля текущего подхода
+let formDate=null;        // дата, за которую идёт запись
+let formNote="";          // заметка активной записи
 let logFilter="all";
 let logDate=null;         // calendar day filter in journal
 let calYM=null;           // displayed calendar month
@@ -444,26 +453,36 @@ function renderToday(){
   if(openEx){
     const ex=exById(openEx);
     const le=lastEntry(openEx), be=bestOf(openEx);
+    const tE=entryFor(openEx,formDate);
     h+='<div class="card" style="margin-top:10px" id="logform">';
     h+='<div style="font-weight:800;font-size:16px;margin-bottom:2px">'+esc(ex.name)+"</div>";
-    if(le) h+='<div class="small muted">Прошлый раз ('+fmtDay(le.d)+'): <span class="num">'+fmtSets(le)+"</span></div>";
-    if(be){
+    if(le && le.d!==formDate) h+='<div class="small muted">Прошлый раз ('+fmtDay(le.d)+'): <span class="num">'+fmtSets(le)+"</span></div>";
+    if(be && !ex.quick){
       if(ex.reps) h+='<div class="small muted">Рекорд подхода: <span class="num">'+be.r+(be.w?" с +"+be.w+" кг":"")+"</span></div>";
-      else h+='<div class="small muted">Лучшее: <span class="num">'+be.w+"×"+be.r+" (≈"+be.e+" на раз)</span></div>";
+      else if(be.e) h+='<div class="small muted">Лучшее: <span class="num">'+be.w+"×"+be.r+" (≈"+be.e+" на раз)</span></div>";
     }
-    h+='<div style="margin-top:10px" id="setrows">';
-    pendingSets.forEach((s,i)=>{
-      h+='<div class="setrow">'+
-        '<div><label class="f">'+(ex.reps?"+кг (пояс)":"Вес, кг")+'</label><input type="text" inputmode="decimal" placeholder="'+(ex.reps?"0":"60")+'" data-i="'+i+'" data-k="w" value="'+(s.w??"")+'"></div>'+
-        '<div><label class="f">Повт</label><input type="text" inputmode="numeric" placeholder="5" data-i="'+i+'" data-k="r" value="'+(s.r??"")+'"></div>'+
-        '<button class="del" data-i="'+i+'" aria-label="Убрать подход">✕</button></div>';
-    });
-    h+="</div>";
-    h+='<div style="margin-bottom:10px"><button class="btn sm" id="addset">+ подход</button></div>';
+    // подходы этой сессии — каждый записывается сразу, ✕ убирает
+    h+='<div class="small" style="margin-top:10px"><span class="eyebrow" style="margin-bottom:4px">'+(formDate===today()?"Записано сегодня":"Записано за "+esc(fmtDay(formDate)))+"</span></div>";
+    if(tE && tE.sets.length){
+      h+='<div class="chips">';
+      tE.sets.forEach((s,i)=>{
+        const lbl= (!(+s.w)&&!(+s.r))? "подход "+(i+1) : (ex.reps? ((+s.w>0?"+"+s.w+"кг×":"")+s.r) : s.w+"×"+s.r);
+        h+='<button class="chip mini num" data-rmset="'+i+'">'+lbl+" ✕</button>";
+      });
+      h+="</div>";
+    } else {
+      h+='<div class="small muted">пока ничего — жми кнопку после каждого подхода</div>';
+    }
+    if(!ex.quick){
+      h+='<div class="setrow" style="margin-top:10px;grid-template-columns:1fr 1fr">'+
+        '<div><label class="f">'+(ex.reps?"+кг (пояс)":"Вес, кг")+'</label><input type="text" inputmode="decimal" id="curw" placeholder="'+(ex.reps?"0":"60")+'" value="'+esc(curW)+'"></div>'+
+        '<div><label class="f">Повт</label><input type="text" inputmode="numeric" id="curr" placeholder="5" value="'+esc(curR)+'"></div></div>';
+    }
+    h+='<button class="btn primary wide" id="addsetbtn" style="margin:12px 0 10px">'+(ex.quick?"+1 подход":"Записать подход")+"</button>";
     h+='<div style="display:grid;grid-template-columns:130px 1fr;gap:8px;margin-bottom:10px">'+
-       '<div><label class="f">Дата</label><input type="date" id="entrydate" value="'+t+'" max="'+t+'"></div>'+
-       '<div><label class="f">Заметка</label><input type="text" id="entrynote" placeholder="Не обязательно"></div></div>';
-    h+='<div style="display:flex;gap:8px"><button class="btn primary wide" id="saveentry">Сохранить</button><button class="btn" id="cancelentry">Отмена</button></div>';
+       '<div><label class="f">Дата</label><input type="date" id="entrydate" value="'+formDate+'" max="'+t+'"></div>'+
+       '<div><label class="f">Заметка</label><input type="text" id="entrynote" placeholder="Не обязательно" value="'+esc(formNote)+'"></div></div>';
+    h+='<button class="btn" id="donebtn" style="width:100%">Готово</button>';
     h+="</div>";
   }
 
@@ -519,52 +538,63 @@ function renderToday(){
   document.querySelectorAll("#exchips .chip[data-ex]").forEach(c=>{
     c.addEventListener("click",()=>{
       const id=c.dataset.ex;
-      if(openEx===id){ openEx=null; }
-      else{
-        openEx=id; const le=lastEntry(id);
-        pendingSets = le? le.sets.map(s=>({w:s.w,r:s.r})) : [{w:"",r:""}];
-      }
+      if(openEx===id){ openEx=null; render(); return; }
+      openEx=id; formDate=today();
+      const te0=entryFor(id,formDate);
+      formNote=(te0&&te0.note)||"";
+      const lp=lastEntry(id);
+      const src=(te0&&te0.sets.length)? te0.sets[te0.sets.length-1] : (lp&&lp.sets.length? lp.sets[lp.sets.length-1] : null);
+      curW=(src&&+src.w)? String(src.w):""; curR=(src&&+src.r)? String(src.r):"";
       render();
-      if(openEx){ const f=document.getElementById("logform"); if(f) f.scrollIntoView({block:"center"}); }
+      const f=document.getElementById("logform"); if(f) f.scrollIntoView({block:"center"});
     });
   });
   const addexBtn=document.getElementById("addex");
   if(addexBtn) addexBtn.addEventListener("click",()=>openSettings("addex"));
   if(openEx){
-    document.querySelectorAll("#setrows input").forEach(inp=>{
-      inp.addEventListener("input",()=>{ pendingSets[+inp.dataset.i][inp.dataset.k]=inp.value; });
+    const ex=exById(openEx);
+    const cw=document.getElementById("curw"), cr=document.getElementById("curr");
+    if(cw) cw.addEventListener("input",()=>{ curW=cw.value; });
+    if(cr) cr.addEventListener("input",()=>{ curR=cr.value; });
+    const ed=document.getElementById("entrydate");
+    ed.addEventListener("change",()=>{
+      formDate=(/^\d{4}-\d{2}-\d{2}$/.test(ed.value)&&ed.value<=today())? ed.value : today();
+      const te2=entryFor(openEx,formDate); formNote=(te2&&te2.note)||"";
+      render();
     });
-    document.querySelectorAll("#setrows .del").forEach(bt=>{
-      bt.addEventListener("click",()=>{ pendingSets.splice(+bt.dataset.i,1); if(!pendingSets.length) pendingSets=[{w:"",r:""}]; render(); });
+    const en=document.getElementById("entrynote");
+    en.addEventListener("input",()=>{
+      formNote=en.value;
+      const e2=entryFor(openEx,formDate);
+      if(e2){ e2.note=formNote.trim()||undefined; save(); }
     });
-    document.getElementById("addset").addEventListener("click",()=>{
-      const l=pendingSets[pendingSets.length-1];
-      pendingSets.push(l?{w:l.w,r:l.r}:{w:"",r:""}); render();
+    document.querySelectorAll("[data-rmset]").forEach(bt=>{
+      bt.addEventListener("click",()=>{
+        const e2=entryFor(openEx,formDate); if(!e2) return;
+        e2.sets.splice(+bt.dataset.rmset,1);
+        if(!e2.sets.length) S.log=S.log.filter(x=>x.id!==e2.id);
+        save(); render(); toast("Подход убран");
+      });
     });
-    document.getElementById("cancelentry").addEventListener("click",()=>{ openEx=null; render(); });
-    document.getElementById("saveentry").addEventListener("click",()=>{
-      const bt=document.getElementById("saveentry");
-      let sets=pendingSets
-        .map(s=>({w:num(s.w)||0, r:parseInt(String(s.r).trim(),10)||0}))
-        .filter(s=>s.r>0||s.w>0);
-      if(!sets.length){
-        // цифры не введены — можно записать просто количество подходов, вторым тапом
-        const ex=exById(openEx);
-        if(ex.reps){ toast("Для подтягиваний нужны повторения"); return; }
-        if(!bt.dataset.armed){
-          bt.dataset.armed="1";
-          bt.textContent="Записать "+plural(pendingSets.length,["подход","подхода","подходов"])+" без цифр?";
-          setTimeout(()=>{ if(document.body.contains(bt)){ delete bt.dataset.armed; bt.textContent="Сохранить"; } },4000);
+    document.getElementById("addsetbtn").addEventListener("click",()=>{
+      const ab=document.getElementById("addsetbtn");
+      let w=num(curW)||0, r=parseInt(String(curR).trim(),10)||0;
+      if(ex.quick){ w=0; r=0; }
+      else if(ex.reps && !(r>0)){ toast("Введи повторения"); return; }
+      else if(!(w>0)&&!(r>0)){
+        if(!ab.dataset.armed){
+          ab.dataset.armed="1"; ab.textContent="Записать подход без цифр?";
+          setTimeout(()=>{ if(document.body.contains(ab)){ delete ab.dataset.armed; ab.textContent="Записать подход"; } },4000);
           return;
         }
-        sets=pendingSets.map(()=>({w:0,r:0}));
       }
-      const note=document.getElementById("entrynote").value.trim();
-      let d=document.getElementById("entrydate").value;
-      if(!/^\d{4}-\d{2}-\d{2}$/.test(d) || d>today()) d=today();
-      S.log.push({id:uid(), d, ex:openEx, sets, note:note||undefined});
-      save(); openEx=null; pendingSets=[]; render(); toast(d===today()?"Записано":"Записано за "+fmtDay(d));
+      let e2=entryFor(openEx,formDate);
+      if(!e2){ e2={id:uid(), d:formDate, ex:openEx, sets:[], note:formNote.trim()||undefined}; S.log.push(e2); }
+      e2.sets.push({w,r});
+      save(); render();
+      toast("Подход "+e2.sets.length+" записан"+(formDate===today()?"":" за "+fmtDay(formDate)));
     });
+    document.getElementById("donebtn").addEventListener("click",()=>{ openEx=null; render(); });
   }
   wireEntryDeletes();
 }
@@ -791,6 +821,7 @@ function openSettings(focus){
   Object.keys(GROUPS).sort((a,b)=>GROUPS[a].ord-GROUPS[b].ord).forEach(g=>{ h+='<option value="'+g+'">'+esc(GROUPS[g].name)+"</option>"; });
   h+="</select>";
   h+='<label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:14px"><input type="checkbox" id="newreps" style="width:auto"> Считать повторения, а не подходы (как подтягивания)</label>';
+  h+='<label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:14px"><input type="checkbox" id="newquick" style="width:auto"> Счётчик: только подходы, без веса и повторений (памп)</label>';
   h+='<button class="btn primary wide" id="addexbtn" style="margin-top:10px">Добавить</button></div>';
 
   h+="<h2>Упражнения</h2><div class='card tight'>";
@@ -819,7 +850,8 @@ function openSettings(focus){
   document.getElementById("addexbtn").addEventListener("click",()=>{
     const name=document.getElementById("newname").value.trim();
     if(!name){ toast("Введи название"); return; }
-    S.ex.push({id:uid(), name, g:document.getElementById("newgroup").value, reps:document.getElementById("newreps").checked, prio:0});
+    const quick=document.getElementById("newquick").checked;
+    S.ex.push({id:uid(), name, g:document.getElementById("newgroup").value, reps:!quick&&document.getElementById("newreps").checked, quick, prio:0});
     save(); toast("Добавлено: "+name); settingsEl.classList.remove("open"); render();
   });
   w.querySelectorAll("[data-arch]").forEach(bt=>{
